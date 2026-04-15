@@ -1,0 +1,52 @@
+/* Montserrat */
+@font-face {
+  font-family: 'Montserrat';
+  font-weight: 300;
+  font-style: normal;
+  font-display: block;
+  src: url('../../public/fonts/Montserrat-Light.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Montserrat';
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+  src: url('../../public/fonts/Montserrat-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Montserrat';
+  font-weight: 500;
+  font-style: normal;
+  font-display: block;
+  src: url('../../public/fonts/Montserrat-Medium.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Montserrat';
+  font-weight: 600;
+  font-style: normal;
+  font-display: block;
+  src: url('../../public/fonts/Montserrat-SemiBold.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Montserrat';
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+  src: url('../../public/fonts/Montserrat-Bold.woff2') format('woff2');
+}
+
+/* DM Mono */
+@font-face {
+  font-family: 'DM Mono';
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+  src: url('../../public/fonts/DMMono-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'DM Mono';
+  font-weight: 500;
+  font-style: normal;
+  font-display: block;
+  src: url('../../public/fonts/DMMono-Medium.woff2') format('woff2');
+}

@@ -1,0 +1,30 @@
+{
+  "name": "flow-weaver-videos",
+  "version": "0.1.0",
+  "description": "AI-powered video generation with Flow Weaver and Remotion. Workflows that turn data into stories.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio src/Root.tsx",
+    "render": "remotion render src/Root.tsx",
+    "render:painting": "remotion render src/Root.tsx painting-explorer out/painting-explorer.mp4",
+    "generate": "npx tsx src/workflows/painting-explorer/generate.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
+    "@remotion/cli": "^4.0.447",
+    "@remotion/media-utils": "^4.0.447",
+    "@remotion/transitions": "^4.0.447",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "^4.0.447",
+    "sharp": "^0.33.0",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "~5.8.0"
+  }
+}

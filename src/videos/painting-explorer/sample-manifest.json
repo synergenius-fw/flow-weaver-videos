@@ -1,0 +1,92 @@
+{
+  "title": "The School of Athens",
+  "artist": "Raphael",
+  "year": "1509-1511",
+  "imagePath": "images/school-of-athens.jpg",
+  "imageWidth": 3820,
+  "imageHeight": 2964,
+  "regions": [
+    {
+      "id": "plato-aristotle",
+      "label": "Plato and Aristotle",
+      "description": "The two central figures - Plato points upward to the realm of Forms, Aristotle gestures toward the earth",
+      "bbox": { "x": 38, "y": 20, "width": 24, "height": 45 }
+    },
+    {
+      "id": "euclid",
+      "label": "Euclid",
+      "description": "Bent over a slate, demonstrating geometry to students gathered around him",
+      "bbox": { "x": 62, "y": 55, "width": 18, "height": 30 }
+    },
+    {
+      "id": "heraclitus",
+      "label": "Heraclitus",
+      "description": "The brooding figure sitting alone on the steps, often said to be modeled after Michelangelo",
+      "bbox": { "x": 35, "y": 55, "width": 12, "height": 25 }
+    },
+    {
+      "id": "diogenes",
+      "label": "Diogenes",
+      "description": "Sprawled casually on the steps, embodying his rejection of material comfort",
+      "bbox": { "x": 42, "y": 50, "width": 15, "height": 20 }
+    },
+    {
+      "id": "pythagoras",
+      "label": "Pythagoras",
+      "description": "Writing in a large book, surrounded by students eager to learn his theories of harmony",
+      "bbox": { "x": 10, "y": 50, "width": 18, "height": 30 }
+    }
+  ],
+  "beats": [
+    {
+      "regionId": "overview",
+      "narration": "One painting. Fifty philosophers. Two thousand years of human thought, frozen in a single room.",
+      "durationSeconds": 5,
+      "zoom": 1,
+      "mood": "epic"
+    },
+    {
+      "regionId": "plato-aristotle",
+      "narration": "At the center: the argument that started everything. Plato points up — truth is abstract. Aristotle pushes down — truth is here, in the world.",
+      "durationSeconds": 6,
+      "zoom": 2.2,
+      "mood": "dramatic"
+    },
+    {
+      "regionId": "heraclitus",
+      "narration": "Sitting alone, ignoring everyone. This is Heraclitus — or rather, Michelangelo. Raphael painted his rival into the scene as a tribute.",
+      "durationSeconds": 5,
+      "zoom": 2.8,
+      "mood": "mysterious"
+    },
+    {
+      "regionId": "diogenes",
+      "narration": "And this guy? Diogenes. Lying on the steps like he owns the place. He once told Alexander the Great to move — he was blocking the sun.",
+      "durationSeconds": 5,
+      "zoom": 2.5,
+      "mood": "humorous"
+    },
+    {
+      "regionId": "pythagoras",
+      "narration": "Pythagoras, deep in his notebook. The man who believed the universe was built on numbers and harmony.",
+      "durationSeconds": 5,
+      "zoom": 2.5,
+      "mood": "reverent"
+    },
+    {
+      "regionId": "euclid",
+      "narration": "Euclid draws a perfect circle on his slate. His students lean in. Geometry — the language of the cosmos.",
+      "durationSeconds": 5,
+      "zoom": 2.5,
+      "mood": "reverent"
+    },
+    {
+      "regionId": "overview",
+      "narration": "Every figure here shaped the world. And Raphael put them all in one room — because great ideas never exist alone.",
+      "durationSeconds": 5,
+      "zoom": 1,
+      "mood": "epic"
+    }
+  ],
+  "totalDurationSeconds": 36
+}
