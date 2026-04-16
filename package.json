@@ -16,6 +16,7 @@
     "@remotion/cli": "^4.0.447",
     "@remotion/media-utils": "^4.0.447",
     "@remotion/transitions": "^4.0.447",
+    "kokoro-js": "^1.2.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "remotion": "^4.0.447",

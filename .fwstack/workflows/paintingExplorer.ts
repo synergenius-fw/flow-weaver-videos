@@ -413,6 +413,79 @@ function validateStory(
 /**
  * @flowWeaver nodeType
  * @expression
+ * @label Generate Audio
+ * @color "orange"
+ * @icon "mic"
+ * @input beats - Validated scene beats with narration text
+ * @input narrate - Whether to generate audio narration (true/false as string)
+ * @input outputDir - Absolute path to the public directory for saving audio files
+ * @input [voice] - Kokoro voice ID (default: af_heart)
+ * @output narrated - Beats with updated durationSeconds (matched to audio) and audioPath fields
+ */
+async function generateAudio(
+  beats: Array<{
+    regionId: string;
+    narration: string;
+    durationSeconds: number;
+    zoom: number;
+    transition: string;
+    mood: string;
+  }>,
+  narrate: string,
+  outputDir: string,
+  voice?: string,
+): Promise<{
+  narrated: Array<{
+    regionId: string;
+    narration: string;
+    durationSeconds: number;
+    zoom: number;
+    transition: string;
+    mood: string;
+    audioPath?: string;
+  }>;
+}> {
+  // If narration disabled, pass beats through unchanged
+  if (narrate !== 'true') {
+    return { narrated: beats };
+  }
+
+  const { KokoroTTS } = await import('kokoro-js');
+  const fs = await import('fs');
+  const path = await import('path');
+
+  const tts = await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX', { dtype: 'fp32' });
+  const voiceId = voice || 'af_heart';
+
+  const audioDir = path.join(outputDir, 'audio');
+  fs.mkdirSync(audioDir, { recursive: true });
+
+  const narrated = [];
+  for (let i = 0; i < beats.length; i++) {
+    const beat = beats[i];
+    const audio = await tts.generate(beat.narration, { voice: voiceId });
+
+    const audioDuration = audio.audio.length / audio.sampling_rate;
+    // Add 0.5s padding for breathing room
+    const adjustedDuration = Math.round((audioDuration + 0.5) * 10) / 10;
+
+    const fileName = `beat-${i}.wav`;
+    const filePath = path.join(audioDir, fileName);
+    audio.save(filePath);
+
+    narrated.push({
+      ...beat,
+      durationSeconds: Math.max(adjustedDuration, beat.durationSeconds),
+      audioPath: `audio/${fileName}`,
+    });
+  }
+
+  return { narrated };
+}
+
+/**
+ * @flowWeaver nodeType
+ * @expression
  * @label Plan Scenes
  * @color "cyan"
  * @icon "description"
@@ -423,7 +496,7 @@ function validateStory(
  * @input imageWidth - Source image width in pixels
  * @input imageHeight - Source image height in pixels
  * @input regions - Validated regions of interest
- * @input beats - Validated scene beats
+ * @input beats - Narrated scene beats (with optional audioPath and adjusted durations)
  * @output manifest - Complete SceneManifest object for Remotion rendering
  */
 function planScenes(
@@ -446,6 +519,7 @@ function planScenes(
     zoom: number;
     transition: string;
     mood: string;
+    audioPath?: string;
   }>,
 ): {
   manifest: {
@@ -490,7 +564,10 @@ function planScenes(
  * @param imageMediaType - MIME type of the image (image/jpeg or image/png)
  * @param imageWidth - Source image width in pixels
  * @param imageHeight - Source image height in pixels
- * @param [precomputedDetections] - Pre-computed OWL-ViT detections as JSON string
+ * @param [precomputedDetections] - Pre-computed detections as JSON string
+ * @param [narrate] - Set to "true" to generate audio narration via Kokoro TTS
+ * @param [outputDir] - Absolute path to public/ directory for saving audio files
+ * @param [voice] - Kokoro voice ID (default: af_heart)
  * @returns manifest - Complete SceneManifest object for Remotion rendering
  *
  * @position Start 0 150
@@ -503,15 +580,17 @@ function planScenes(
  * @node story waitForAgent [position: 2100 150] [color: "purple"] [icon: "smartToy"] [expr: agentId="'story-generator'"]
  * @node parseSt parseStoryResult [position: 2400 150] [color: "cyan"] [icon: "search"]
  * @node vStory validateStory [position: 2700 150] [color: "green"] [icon: "verified"] [suppress: "UNUSED_OUTPUT_PORT"]
- * @node scenes planScenes [position: 3000 150] [color: "cyan"] [icon: "description"]
- * @position Exit 3300 150
+ * @node audio generateAudio [position: 3000 150] [color: "orange"] [icon: "mic"]
+ * @node scenes planScenes [position: 3300 150] [color: "cyan"] [icon: "description"]
+ * @position Exit 3600 150
  *
- * @path Start -> detect -> buildIdPrompt -> identify -> parseId -> vRegions -> buildStPrompt -> story -> parseSt -> vStory -> scenes -> Exit
+ * @path Start -> detect -> buildIdPrompt -> identify -> parseId -> vRegions -> buildStPrompt -> story -> parseSt -> vStory -> audio -> scenes -> Exit
  * @path detect:fail -> Exit
  * @path identify:fail -> Exit
  * @path vRegions:fail -> Exit
  * @path story:fail -> Exit
  * @path vStory:fail -> Exit
+ * @path audio:fail -> Exit
  *
  * @connect Start.imageUrl -> detect.imageUrl
  * @connect Start.precomputedDetections -> detect.precomputed
@@ -529,6 +608,10 @@ function planScenes(
  * @connect story.agentResult -> parseSt.agentResult
  * @connect parseSt.beats -> vStory.beats
  * @connect vRegions.validatedRegions -> vStory.regions
+ * @connect vStory.validatedBeats -> audio.beats
+ * @connect Start.narrate -> audio.narrate
+ * @connect Start.outputDir -> audio.outputDir
+ * @connect Start.voice -> audio.voice
  * @connect parseId.title -> scenes.title
  * @connect parseId.artist -> scenes.artist
  * @connect parseId.year -> scenes.year
@@ -536,7 +619,7 @@ function planScenes(
  * @connect Start.imageWidth -> scenes.imageWidth
  * @connect Start.imageHeight -> scenes.imageHeight
  * @connect vRegions.validatedRegions -> scenes.regions
- * @connect vStory.validatedBeats -> scenes.beats
+ * @connect audio.narrated -> scenes.beats
  * @connect scenes.manifest -> Exit.manifest
  */
 export function paintingExplorer(
@@ -548,6 +631,9 @@ export function paintingExplorer(
     imageWidth: number;
     imageHeight: number;
     precomputedDetections?: string;
+    narrate?: string;
+    outputDir?: string;
+    voice?: string;
   },
 ): {
   onSuccess: boolean;
@@ -572,6 +658,7 @@ export function paintingExplorer(
       zoom: number;
       transition: string;
       mood: string;
+      audioPath?: string;
     }>;
     totalDurationSeconds: number;
   } | null;

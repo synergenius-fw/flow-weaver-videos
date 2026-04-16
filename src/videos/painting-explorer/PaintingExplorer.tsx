@@ -1,4 +1,4 @@
-import { AbsoluteFill, Img, staticFile, useCurrentFrame, useVideoConfig, interpolate } from 'remotion';
+import { AbsoluteFill, Audio, Img, Sequence, staticFile, useCurrentFrame, useVideoConfig, interpolate } from 'remotion';
 import { Camera, type CameraKeyframe } from '@video/components/Camera';
 import { Scene } from '@video/components/Scene';
 import { Title } from '@video/components/Title';
@@ -534,6 +534,16 @@ export const PaintingExplorer: React.FC<PaintingExplorerProps> = ({ manifest }) 
       {beatFrames.map(({ beat, from, duration }, i) => {
         if ((beat.transition ?? 'pan') === 'cut') return null;
         return <Subtitle key={`sub-${i}`} text={beat.narration} from={from} duration={duration} />;
+      })}
+
+      {/* Audio narration per beat (if audioPath exists) */}
+      {beatFrames.map(({ beat, from }, i) => {
+        if (!beat.audioPath) return null;
+        return (
+          <Sequence key={`audio-${i}`} from={from}>
+            <Audio src={staticFile(beat.audioPath)} volume={1} />
+          </Sequence>
+        );
       })}
 
       {/* Outro: fade to black with title */}

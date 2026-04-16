@@ -28,6 +28,8 @@ export const SceneBeatSchema = z.object({
   transition: z.enum(['pan', 'cut']).default('pan'),
   /** Mood tag for SFX/meme selection */
   mood: z.enum(['dramatic', 'mysterious', 'humorous', 'reverent', 'tense', 'peaceful', 'epic']),
+  /** Optional audio file path for narration (relative to public/) */
+  audioPath: z.string().optional(),
   /** Optional sound effect key */
   sfx: z.string().optional(),
   /** Optional meme overlay key */

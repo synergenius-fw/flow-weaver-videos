@@ -9,49 +9,143 @@
     {
       "id": "plato-aristotle",
       "label": "Plato and Aristotle",
-      "description": "The two central figures walking beneath the main arch. Plato in red points upward to the realm of Forms, Aristotle in blue gestures outward toward the physical world.",
-      "bbox": { "x": 39, "y": 22, "width": 20, "height": 38 }
-    },
-    {
-      "id": "heraclitus",
-      "label": "Heraclitus",
-      "description": "The brooding figure hunched alone over a marble block in the foreground, writing. Modeled after Michelangelo — Raphael painted his rival into the scene as tribute.",
-      "bbox": { "x": 35, "y": 55, "width": 11, "height": 21 }
-    },
-    {
-      "id": "euclid",
-      "label": "Euclid",
-      "description": "Bent over in the lower right, drawing geometric figures with a compass on a slate while students crowd around to watch.",
-      "bbox": { "x": 60, "y": 54, "width": 18, "height": 26 }
-    },
-    {
-      "id": "diogenes",
-      "label": "Diogenes",
-      "description": "Sprawled casually on the steps in a teal robe, completely alone. The Cynic who rejected all material possessions and once told Alexander the Great to get out of his sunlight.",
-      "bbox": { "x": 42, "y": 46, "width": 12, "height": 18 }
+      "description": "The two central figures beneath the main arch. Plato in red points upward, Aristotle in blue gestures outward.",
+      "bbox": {
+        "x": 38,
+        "y": 25,
+        "width": 22,
+        "height": 35
+      }
     },
     {
       "id": "pythagoras",
       "label": "Pythagoras",
-      "description": "Seated in the lower left, writing intently in a large book while students peer over his shoulder. The mathematician who believed the cosmos was built on harmony.",
-      "bbox": { "x": 10, "y": 49, "width": 17, "height": 27 }
+      "description": "Seated lower left writing in a large book, students peering over his shoulder.",
+      "bbox": {
+        "x": 21,
+        "y": 60,
+        "width": 11,
+        "height": 18
+      }
+    },
+    {
+      "id": "heraclitus",
+      "label": "Heraclitus",
+      "description": "Brooding figure hunched alone over a marble block. Modeled after Michelangelo.",
+      "bbox": {
+        "x": 39,
+        "y": 61,
+        "width": 10,
+        "height": 18
+      }
+    },
+    {
+      "id": "diogenes",
+      "label": "Diogenes",
+      "description": "Sprawled on the steps in a teal robe.",
+      "bbox": {
+        "x": 53,
+        "y": 53,
+        "width": 13,
+        "height": 14
+      }
+    },
+    {
+      "id": "euclid",
+      "label": "Euclid",
+      "description": "Bent over drawing with a compass while students watch.",
+      "bbox": {
+        "x": 65,
+        "y": 60,
+        "width": 14,
+        "height": 18
+      }
     },
     {
       "id": "raphael-ptolemy",
       "label": "Raphael, Ptolemy and Zoroaster",
-      "description": "Far right: Ptolemy holds a terrestrial globe, Zoroaster a celestial one. Raphael painted himself just behind them — the only figure looking directly at the viewer.",
-      "bbox": { "x": 80, "y": 44, "width": 14, "height": 26 }
+      "description": "Far right: Ptolemy holds a terrestrial globe, Zoroaster a celestial one. Raphael painted himself just behind them.",
+      "bbox": {
+        "x": 79,
+        "y": 44,
+        "width": 13,
+        "height": 25
+      }
     }
   ],
   "beats": [
-    { "regionId": "overview", "narration": "One painting. Fifty philosophers. Two thousand years of human thought, frozen in a single room.", "durationSeconds": 5, "zoom": 1, "transition": "pan", "mood": "epic" },
-    { "regionId": "plato-aristotle", "narration": "At the center: the argument that started everything. Plato points up — truth is abstract. Aristotle pushes down — truth is here, in the world.", "durationSeconds": 6, "zoom": 2.2, "transition": "pan", "mood": "dramatic" },
-    { "regionId": "heraclitus", "narration": "Sitting alone, ignoring everyone. This is Heraclitus — or rather, Michelangelo. Raphael painted his greatest rival into the scene as tribute.", "durationSeconds": 5, "zoom": 2.8, "transition": "cut", "mood": "mysterious" },
-    { "regionId": "diogenes", "narration": "Diogenes. Sprawled on the steps like he owns the place. He once told Alexander the Great to move — he was blocking the sun.", "durationSeconds": 5, "zoom": 2.5, "transition": "cut", "mood": "humorous" },
-    { "regionId": "pythagoras", "narration": "Pythagoras, lost in his notebook. The man who heard music in mathematics and believed the universe was built on harmony.", "durationSeconds": 5, "zoom": 2.5, "transition": "cut", "mood": "reverent" },
-    { "regionId": "euclid", "narration": "Euclid draws a perfect circle while his students lean in. Geometry — the one language that never lies.", "durationSeconds": 5, "zoom": 2.5, "transition": "pan", "mood": "reverent" },
-    { "regionId": "raphael-ptolemy", "narration": "Ptolemy holds the earth. Zoroaster holds the stars. And just behind them — Raphael himself, the only figure looking straight at you.", "durationSeconds": 5, "zoom": 2.5, "transition": "cut", "mood": "mysterious" },
-    { "regionId": "overview", "narration": "Every figure here shaped the world. And Raphael put them all in one room — because great ideas never exist alone.", "durationSeconds": 5, "zoom": 1, "transition": "pan", "mood": "epic" }
+    {
+      "regionId": "overview",
+      "narration": "One painting. Fifty philosophers. Two thousand years of human thought, frozen in a single room.",
+      "durationSeconds": 7.2,
+      "zoom": 1,
+      "transition": "pan",
+      "mood": "epic",
+      "audioPath": "audio/beat-0.wav"
+    },
+    {
+      "regionId": "plato-aristotle",
+      "narration": "At the center: the argument that started everything. Plato points up — truth is abstract. Aristotle pushes down — truth is here, in the world.",
+      "durationSeconds": 10,
+      "zoom": 2.2,
+      "transition": "pan",
+      "mood": "dramatic",
+      "audioPath": "audio/beat-1.wav"
+    },
+    {
+      "regionId": "heraclitus",
+      "narration": "Sitting alone, ignoring everyone. This is Heraclitus — or rather, Michelangelo. Raphael painted his greatest rival into the scene as tribute.",
+      "durationSeconds": 10.5,
+      "zoom": 2.8,
+      "transition": "cut",
+      "mood": "mysterious",
+      "audioPath": "audio/beat-2.wav"
+    },
+    {
+      "regionId": "diogenes",
+      "narration": "Diogenes. Sprawled on the steps like he owns the place. He once told Alexander the Great to move — he was blocking the sun.",
+      "durationSeconds": 8.6,
+      "zoom": 2.5,
+      "transition": "cut",
+      "mood": "humorous",
+      "audioPath": "audio/beat-3.wav"
+    },
+    {
+      "regionId": "pythagoras",
+      "narration": "Pythagoras, lost in his notebook. The man who heard music in mathematics and believed the universe was built on harmony.",
+      "durationSeconds": 8.5,
+      "zoom": 2.5,
+      "transition": "cut",
+      "mood": "reverent",
+      "audioPath": "audio/beat-4.wav"
+    },
+    {
+      "regionId": "euclid",
+      "narration": "Euclid draws a perfect circle while his students lean in. Geometry — the one language that never lies.",
+      "durationSeconds": 7.4,
+      "zoom": 2.5,
+      "transition": "pan",
+      "mood": "reverent",
+      "audioPath": "audio/beat-5.wav"
+    },
+    {
+      "regionId": "raphael-ptolemy",
+      "narration": "Ptolemy holds the earth. Zoroaster holds the stars. And just behind them — Raphael himself, the only figure looking straight at you.",
+      "durationSeconds": 9.3,
+      "zoom": 2.5,
+      "transition": "cut",
+      "mood": "mysterious",
+      "audioPath": "audio/beat-6.wav"
+    },
+    {
+      "regionId": "overview",
+      "narration": "Every figure here shaped the world. And Raphael put them all in one room — because great ideas never exist alone.",
+      "durationSeconds": 8.2,
+      "zoom": 1,
+      "transition": "pan",
+      "mood": "epic",
+      "audioPath": "audio/beat-7.wav"
+    }
   ],
-  "totalDurationSeconds": 41
+  "totalDurationSeconds": 69.7
 }
