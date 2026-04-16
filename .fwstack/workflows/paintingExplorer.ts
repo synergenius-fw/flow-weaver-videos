@@ -8,8 +8,8 @@
  * @label Detect Regions
  * @color "cyan"
  * @icon "search"
- * @input imageUrl - File URL to the painting image (file:///path/to/image.jpg)
- * @input [precomputed] - Pre-computed detections JSON string. If provided, OWL-ViT is skipped.
+ * @input imageUrl - Absolute path to the painting image
+ * @input [precomputed] - Pre-computed detections JSON string. If provided, Florence-2 is skipped.
  * @output detections - Array of detected regions with label, score, and bbox as percentage coordinates (0-100)
  */
 async function detectRegions(
@@ -27,44 +27,54 @@ async function detectRegions(
     return { detections: Array.isArray(parsed) ? parsed : parsed.detections ?? [] };
   }
 
-  const { pipeline } = await import('@huggingface/transformers');
+  const { Florence2ForConditionalGeneration, AutoProcessor, AutoTokenizer, RawImage } =
+    await import('@huggingface/transformers');
 
-  const detector = await pipeline(
-    'zero-shot-object-detection',
-    'Xenova/owlvit-base-patch32',
+  const modelId = 'onnx-community/Florence-2-base-ft';
+  const model = await Florence2ForConditionalGeneration.from_pretrained(modelId, { dtype: 'fp32' });
+  const processor = await AutoProcessor.from_pretrained(modelId);
+  const tokenizer = await AutoTokenizer.from_pretrained(modelId);
+
+  const image = await RawImage.read(imageUrl);
+  const w = image.width;
+  const h = image.height;
+
+  // Object detection task — returns labels + bounding boxes
+  const task = '<OD>';
+  const prompts = processor.construct_prompts(task);
+  const text_inputs = tokenizer(prompts);
+  const vision_inputs = await processor(image);
+  const generated_ids = await model.generate({
+    ...text_inputs,
+    ...vision_inputs,
+    max_new_tokens: 1024,
+  });
+
+  const generated_text = tokenizer.batch_decode(generated_ids, { skip_special_tokens: false })[0];
+  const result = processor.post_process_generation(generated_text, task, image.size);
+
+  const odResult = result[task] as { labels: string[]; bboxes: number[][] };
+
+  // Convert pixel bboxes [x1, y1, x2, y2] to percentage {x, y, width, height}
+  const converted = odResult.labels.map((label: string, i: number) => {
+    const [x1, y1, x2, y2] = odResult.bboxes[i];
+    return {
+      label,
+      score: 1.0, // Florence-2 doesn't return scores for OD
+      bbox: {
+        x: Math.round((x1 / w) * 100),
+        y: Math.round((y1 / h) * 100),
+        width: Math.round(((x2 - x1) / w) * 100),
+        height: Math.round(((y2 - y1) / h) * 100),
+      },
+    };
+  })
+  // Filter: skip "building" and tiny detections
+  .filter((d: { label: string; bbox: { width: number; height: number } }) =>
+    d.label !== 'building' && d.bbox.width >= 5 && d.bbox.height >= 5
   );
 
-  const labels = [
-    'person',
-    'group of people',
-    'figure',
-    'statue',
-    'book',
-    'globe',
-    'musical instrument',
-    'writing tablet',
-  ];
-
-  const rawDetections = await detector(imageUrl, labels, {
-    threshold: 0.05,
-    top_k: 20,
-    percentage: true,
-  }) as Array<{ score: number; label: string; box: { xmin: number; ymin: number; xmax: number; ymax: number } }>;
-
-  const converted = rawDetections
-    .map((d) => ({
-      label: d.label,
-      score: d.score,
-      bbox: {
-        x: Math.round(d.box.xmin * 100),
-        y: Math.round(d.box.ymin * 100),
-        width: Math.round((d.box.xmax - d.box.xmin) * 100),
-        height: Math.round((d.box.ymax - d.box.ymin) * 100),
-      },
-    }))
-    .filter((d) => d.bbox.width >= 5 && d.bbox.height >= 5)
-    .sort((a, b) => b.score - a.score);
-
+  // Merge overlapping detections (IoU > 0.5)
   const kept: typeof converted = [];
   const used = new Set<number>();
   for (let i = 0; i < converted.length; i++) {
@@ -476,7 +486,7 @@ function planScenes(
  * @description Detects regions in a painting using OWL-ViT (or pre-computed), identifies them via an agent, generates a narrated story via an agent, validates structure, and assembles a Remotion scene manifest.
  *
  * @param imagePath - File path to the source painting image for the manifest
- * @param imageUrl - File URL to the painting image for OWL-ViT detection
+ * @param imageUrl - Absolute path to the painting image for OWL-ViT detection
  * @param imageMediaType - MIME type of the image (image/jpeg or image/png)
  * @param imageWidth - Source image width in pixels
  * @param imageHeight - Source image height in pixels
