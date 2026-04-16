@@ -165,6 +165,7 @@ async function fetchResults(
  * @input outputDir - Absolute path to public directory for saving assets
  * @output playerImages - Mapping of player name to local image file path
  * @output crestImages - Mapping of team name to local crest file path
+ * @output stadiumImages - Mapping of competition ID to a stadium/match atmosphere photo path
  */
 async function fetchImages(
   competitions: Array<{
@@ -180,6 +181,7 @@ async function fetchImages(
 ): Promise<{
   playerImages: Record<string, string>;
   crestImages: Record<string, string>;
+  stadiumImages: Record<string, string>;
 }> {
   const fs = await import('fs');
   const path = await import('path');
@@ -261,7 +263,50 @@ async function fetchImages(
     } catch { /* skip */ }
   }
 
-  return { playerImages, crestImages };
+  // Download stadium/atmosphere images per competition from Unsplash (free, CC0)
+  const stadiumDir = path.join(outputDir, 'assets', 'stadiums');
+  fs.mkdirSync(stadiumDir, { recursive: true });
+  const stadiumImages: Record<string, string> = {};
+
+  const stadiumQueries: Record<string, string> = {
+    PL: 'premier league stadium football',
+    PD: 'la liga stadium football spain',
+    SA: 'serie a stadium football italy',
+    BL1: 'bundesliga stadium football germany',
+    FL1: 'ligue 1 stadium football france',
+    PPL: 'portugal football stadium',
+    DED: 'eredivisie football stadium netherlands',
+    CL: 'champions league stadium night',
+    EL: 'europa league football stadium',
+    ECL: 'football stadium night',
+  };
+
+  for (const comp of competitions) {
+    const filePath = path.join(stadiumDir, `${comp.id.toLowerCase()}.jpg`);
+    const relPath = `assets/stadiums/${comp.id.toLowerCase()}.jpg`;
+
+    if (fs.existsSync(filePath)) {
+      stadiumImages[comp.id] = relPath;
+      continue;
+    }
+
+    try {
+      const query = encodeURIComponent(stadiumQueries[comp.id] || 'football stadium');
+      // Unsplash Source API — returns a random photo matching the query, no API key needed
+      const res = await fetch(`https://source.unsplash.com/1280x720/?${query}`, { redirect: 'follow' });
+      if (res.ok) {
+        const buffer = Buffer.from(await res.arrayBuffer());
+        // Only save if we got a real image (not a tiny error response)
+        if (buffer.length > 10000) {
+          fs.writeFileSync(filePath, buffer);
+          stadiumImages[comp.id] = relPath;
+        }
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+    } catch { /* skip */ }
+  }
+
+  return { playerImages, crestImages, stadiumImages };
 }
 
 /**
@@ -595,16 +640,28 @@ async function fetchClips(
       .trim();
   }
 
-  // Check if a channel is a verified club/league (by subscriber count or official status)
-  function isVerifiedChannel(channelId: string, channelName: string, home: string, away: string): boolean {
+  // League name keywords for channel matching
+  const LEAGUE_KEYWORDS = ['premier league', 'la liga', 'serie a', 'bundesliga', 'ligue 1',
+    'primeira liga', 'eredivisie', 'champions league', 'europa league', 'conference league',
+    'uefa', 'football', 'soccer', 'futbol', 'calcio'];
+
+  function isAcceptableChannel(channelId: string, channelName: string, videoTitle: string, home: string, away: string): boolean {
     if (OFFICIAL_CHANNELS.has(channelId)) return true;
-    // Accept club channels whose name contains a team name
-    const nameLower = channelName.toLowerCase();
+
+    const chLower = channelName.toLowerCase();
+    const titleLower = videoTitle.toLowerCase();
     const homeLower = home.toLowerCase();
     const awayLower = away.toLowerCase();
-    if (nameLower.includes(homeLower) || nameLower.includes(awayLower)) return true;
+
+    // Accept club channels whose name contains a team name
+    if (chLower.includes(homeLower) || chLower.includes(awayLower)) return true;
     // Accept channels with "official" in the name
-    if (nameLower.includes('official')) return true;
+    if (chLower.includes('official')) return true;
+    // Accept if channel name contains a league keyword
+    if (LEAGUE_KEYWORDS.some((kw) => chLower.includes(kw))) return true;
+    // Accept if video title contains "highlights" and a team name (likely a legit recap)
+    if (titleLower.includes('highlight') && (titleLower.includes(homeLower) || titleLower.includes(awayLower))) return true;
+
     return false;
   }
 
@@ -627,36 +684,38 @@ async function fetchClips(
         const away = shortName(match.awayTeam.name);
         const query = `${home} ${away} highlights ${resolvedDate}`;
 
-        // Search 8 results, get channel ID + channel name + video ID
+        // Search 10 results, get channel ID + channel name + video title + video ID
         const searchResult = execSync(
-          `yt-dlp --print "%(channel_id)s\t%(channel)s\t%(id)s" "ytsearch8:${query}" --no-download --no-warnings`,
+          `yt-dlp --print "%(channel_id)s\t%(channel)s\t%(title)s\t%(id)s" "ytsearch10:${query}" --no-download --no-warnings`,
           { timeout: 30000, stdio: 'pipe', encoding: 'utf-8' },
         ).trim();
 
         const lines = searchResult.split('\n').filter(Boolean);
         let videoId = '';
 
-        // Prefer official league channels first
+        // Pass 1: prefer official league channels
         for (const line of lines) {
-          const [chId, , vId] = line.split('\t');
+          const parts = line.split('\t');
+          const chId = parts[0];
           if (OFFICIAL_CHANNELS.has(chId)) {
-            videoId = vId;
+            videoId = parts[3];
             break;
           }
         }
 
-        // Then try verified club channels
+        // Pass 2: try acceptable channels (clubs, league-named, highlight videos)
         if (!videoId) {
           for (const line of lines) {
-            const [chId, chName, vId] = line.split('\t');
-            if (isVerifiedChannel(chId, chName || '', home, away)) {
+            const parts = line.split('\t');
+            const [chId, chName, title, vId] = parts;
+            if (isAcceptableChannel(chId, chName || '', title || '', home, away)) {
               videoId = vId;
               break;
             }
           }
         }
 
-        // Do NOT fall back to unverified channels — skip the match
+        // Do NOT fall back to random channels — skip the match
         if (videoId) {
           // Download 15 seconds at 720p, starting at 0:15 (past intros/logos)
           execSync(
@@ -688,6 +747,7 @@ async function fetchClips(
  * @input playerImages - Player name to image path mapping
  * @input crestImages - Team name to crest path mapping
  * @input matchClips - Match key to clip file path mapping
+ * @input stadiumImages - Competition ID to stadium photo path mapping
  * @output manifest - Complete manifest for Remotion rendering
  */
 function planScenes(
@@ -713,6 +773,7 @@ function planScenes(
   playerImages: Record<string, string>,
   crestImages: Record<string, string>,
   matchClips: Record<string, string>,
+  stadiumImages: Record<string, string>,
 ): {
   manifest: {
     date: string;
@@ -721,6 +782,7 @@ function planScenes(
     playerImages: typeof playerImages;
     crestImages: typeof crestImages;
     matchClips: typeof matchClips;
+    stadiumImages: typeof stadiumImages;
     totalDurationSeconds: number;
   };
 } {
@@ -735,6 +797,7 @@ function planScenes(
       playerImages,
       crestImages,
       matchClips,
+      stadiumImages,
       totalDurationSeconds,
     },
   };
@@ -803,6 +866,7 @@ function planScenes(
  * @connect images.playerImages -> scenes.playerImages
  * @connect images.crestImages -> scenes.crestImages
  * @connect clips.matchClips -> scenes.matchClips
+ * @connect images.stadiumImages -> scenes.stadiumImages
  * @connect scenes.manifest -> Exit.manifest
  */
 export function footballRecap(
@@ -840,6 +904,7 @@ export function footballRecap(
     playerImages: Record<string, string>;
     crestImages: Record<string, string>;
     matchClips: Record<string, string>;
+    stadiumImages: Record<string, string>;
     totalDurationSeconds: number;
   } | null;
 } {

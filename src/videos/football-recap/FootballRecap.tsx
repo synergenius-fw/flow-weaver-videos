@@ -309,6 +309,50 @@ const ClipBackgroundInner: React.FC<{
 };
 
 // ---------------------------------------------------------------------------
+// Stadium image fallback background (when no clip available)
+// ---------------------------------------------------------------------------
+const StadiumBackground: React.FC<{
+  imagePath: string;
+  from: number;
+  duration: number;
+}> = ({ imagePath, from, duration }) => {
+  const frame = useCurrentFrame();
+  const local = frame - from;
+  if (local < 0 || local >= duration) return null;
+
+  const enter = fadeIn(local, 0, 15);
+  const exit = fadeOut(local, duration - 15, 15);
+  const opacity = Math.min(enter, exit) * 0.3;
+
+  // Subtle slow zoom for Ken Burns effect
+  const scale = 1 + local * 0.0002;
+
+  const src = imagePath.startsWith('http') ? imagePath : staticFile(imagePath);
+
+  return (
+    <AbsoluteFill style={{ opacity }}>
+      <Img
+        src={src}
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          transform: `scale(${scale})`,
+          filter: 'saturate(0.5) blur(2px)',
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'linear-gradient(180deg, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, rgba(0,0,0,0.8) 100%)',
+        }}
+      />
+    </AbsoluteFill>
+  );
+};
+
+// ---------------------------------------------------------------------------
 // League transition wipe
 // ---------------------------------------------------------------------------
 const LeagueWipe: React.FC<{
@@ -425,12 +469,18 @@ export const FootballRecap: React.FC<FootballRecapProps> = ({ manifest }) => {
 
         return (
           <div key={`beat-${beatIdx}`}>
-            {/* Video clip background */}
-            {clipPath && (
+            {/* Video clip background or stadium fallback */}
+            {clipPath ? (
               <Sequence from={from} durationInFrames={duration}>
                 <ClipBackgroundInner clipPath={clipPath} duration={duration} />
               </Sequence>
-            )}
+            ) : manifest.stadiumImages?.[beat.competitionId] ? (
+              <StadiumBackground
+                imagePath={manifest.stadiumImages[beat.competitionId]}
+                from={from}
+                duration={duration}
+              />
+            ) : null}
 
             {/* League header */}
             {isFirstBeatForComp && (
