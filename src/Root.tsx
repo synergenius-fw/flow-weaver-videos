@@ -1,41 +1,86 @@
 import { Composition, registerRoot } from 'remotion';
 import { PaintingExplorer } from '@video/videos/painting-explorer/PaintingExplorer';
+import { FootballRecap } from '@video/videos/football-recap/FootballRecap';
+import { AIBulletin } from '@video/videos/ai-bulletin/AIBulletin';
 import type { SceneManifest } from '@video/videos/painting-explorer/types';
+import type { RecapManifest } from '@video/videos/football-recap/types';
+import type { BulletinManifest } from '@video/videos/ai-bulletin/types';
 
-import sampleManifest from '@video/videos/painting-explorer/sample-manifest.json';
+import paintingManifest from '@video/videos/painting-explorer/sample-manifest.json';
+import recapManifest from '@video/videos/football-recap/sample-manifest.json';
+import bulletinManifest from '@video/videos/ai-bulletin/sample-manifest.json';
 
-const manifestData = sampleManifest as SceneManifest;
+const painting = paintingManifest as SceneManifest;
+const recap = recapManifest as RecapManifest;
+const bulletin = bulletinManifest as BulletinManifest;
 
 const FPS = 30;
-// Extra frames: 3s opening hook + 3s outro fade
-const EXTRA_SECONDS = 6;
 
 const RemotionRoot: React.FC = () => {
-  const manifest = manifestData;
-  const totalFrames = Math.round((manifest.totalDurationSeconds + EXTRA_SECONDS) * FPS);
+  const paintingFrames = Math.round((painting.totalDurationSeconds + 6) * FPS);
+  const recapFrames = Math.round(recap.totalDurationSeconds * FPS);
+  const bulletinFrames = Math.round(bulletin.totalDurationSeconds * FPS);
 
   return (
     <>
-      {/* Landscape (YouTube, desktop) */}
+      {/* ===== Painting Explorer ===== */}
       <Composition
         id="painting-explorer"
         component={PaintingExplorer}
-        durationInFrames={totalFrames}
+        durationInFrames={paintingFrames}
         fps={FPS}
         width={1920}
         height={1080}
-        defaultProps={{ manifest }}
+        defaultProps={{ manifest: painting }}
       />
-
-      {/* Portrait (Reels, TikTok, Stories) */}
       <Composition
         id="painting-explorer-mobile"
         component={PaintingExplorer}
-        durationInFrames={totalFrames}
+        durationInFrames={paintingFrames}
         fps={FPS}
         width={1080}
         height={1920}
-        defaultProps={{ manifest }}
+        defaultProps={{ manifest: painting }}
+      />
+
+      {/* ===== Football Recap ===== */}
+      <Composition
+        id="football-recap"
+        component={FootballRecap}
+        durationInFrames={recapFrames}
+        fps={FPS}
+        width={1920}
+        height={1080}
+        defaultProps={{ manifest: recap }}
+      />
+      <Composition
+        id="football-recap-mobile"
+        component={FootballRecap}
+        durationInFrames={recapFrames}
+        fps={FPS}
+        width={1080}
+        height={1920}
+        defaultProps={{ manifest: recap }}
+      />
+
+      {/* ===== AI Weekly Bulletin ===== */}
+      <Composition
+        id="ai-bulletin"
+        component={AIBulletin}
+        durationInFrames={bulletinFrames}
+        fps={FPS}
+        width={1920}
+        height={1080}
+        defaultProps={{ manifest: bulletin }}
+      />
+      <Composition
+        id="ai-bulletin-mobile"
+        component={AIBulletin}
+        durationInFrames={bulletinFrames}
+        fps={FPS}
+        width={1080}
+        height={1920}
+        defaultProps={{ manifest: bulletin }}
       />
     </>
   );
