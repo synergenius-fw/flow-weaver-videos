@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useCurrentFrame, useVideoConfig, interpolate } from 'remotion';
+import { useCurrentFrame, useVideoConfig, interpolate, Easing } from 'remotion';
 
 export interface CameraKeyframe {
   frame: number;
@@ -19,8 +19,33 @@ export interface CameraProps {
 }
 
 /**
+ * Attempt ease-in-out between each pair of keyframes.
+ * Remotion's interpolate only supports a single easing for the entire range,
+ * so we find the active segment and interpolate within it.
+ */
+function easedInterpolate(frame: number, keyframes: { frame: number; value: number }[]): number {
+  if (keyframes.length === 1) return keyframes[0].value;
+  if (frame <= keyframes[0].frame) return keyframes[0].value;
+  if (frame >= keyframes[keyframes.length - 1].frame) return keyframes[keyframes.length - 1].value;
+
+  // Find active segment
+  let i = 0;
+  while (i < keyframes.length - 1 && keyframes[i + 1].frame <= frame) i++;
+
+  const from = keyframes[i];
+  const to = keyframes[i + 1];
+
+  return interpolate(frame, [from.frame, to.frame], [from.value, to.value], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+    easing: Easing.inOut(Easing.cubic),
+  });
+}
+
+/**
  * Virtual camera. Renders children at contentWidth x contentHeight,
  * then zooms/pans/crops to fit the composition dimensions.
+ * Uses ease-in-out cubic between keyframes for cinematic movement.
  */
 export const Camera: React.FC<CameraProps> = ({
   keyframes,
@@ -36,20 +61,20 @@ export const Camera: React.FC<CameraProps> = ({
     return <>{children}</>;
   }
 
-  const clamp = {
-    extrapolateLeft: 'clamp' as const,
-    extrapolateRight: 'clamp' as const,
-  };
-
   const sorted = [...keyframes].sort((a, b) => a.frame - b.frame);
-  const frames = sorted.map((k) => k.frame);
-  const zooms = sorted.map((k) => k.zoom);
-  const focusXs = sorted.map((k) => k.focusX);
-  const focusYs = sorted.map((k) => k.focusY);
 
-  const zoom = frames.length === 1 ? zooms[0] : interpolate(frame, frames, zooms, clamp);
-  const focusX = frames.length === 1 ? focusXs[0] : interpolate(frame, frames, focusXs, clamp);
-  const focusY = frames.length === 1 ? focusYs[0] : interpolate(frame, frames, focusYs, clamp);
+  const zoom = easedInterpolate(
+    frame,
+    sorted.map((k) => ({ frame: k.frame, value: k.zoom })),
+  );
+  const focusX = easedInterpolate(
+    frame,
+    sorted.map((k) => ({ frame: k.frame, value: k.focusX })),
+  );
+  const focusY = easedInterpolate(
+    frame,
+    sorted.map((k) => ({ frame: k.frame, value: k.focusY })),
+  );
 
   const baseScale = Math.max(vpWidth / contentWidth, vpHeight / contentHeight);
   const totalScale = baseScale * zoom;

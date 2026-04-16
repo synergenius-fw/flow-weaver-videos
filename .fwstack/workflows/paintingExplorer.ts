@@ -5,20 +5,146 @@
 /**
  * @flowWeaver nodeType
  * @expression
- * @label Analyze Image
- * @color "purple"
- * @icon "smartToy"
- * @input imageBase64 - Base64-encoded painting image
- * @input imageMediaType - MIME type of the image (image/jpeg or image/png)
- * @output title - Painting title identified by the vision model
- * @output artist - Artist name identified by the vision model
- * @output year - Year or period identified by the vision model
- * @output regions - Array of regions of interest with id, label, description, and bbox (percentage coordinates)
+ * @label Detect Regions
+ * @color "cyan"
+ * @icon "search"
+ * @input imageUrl - File URL to the painting image (file:///path/to/image.jpg)
+ * @input [precomputed] - Pre-computed detections JSON string. If provided, OWL-ViT is skipped.
+ * @output detections - Array of detected regions with label, score, and bbox as percentage coordinates (0-100)
  */
-async function analyzeImage(
-  imageBase64: string,
-  imageMediaType: string,
+async function detectRegions(
+  imageUrl: string,
+  precomputed?: string,
 ): Promise<{
+  detections: Array<{
+    label: string;
+    score: number;
+    bbox: { x: number; y: number; width: number; height: number };
+  }>;
+}> {
+  if (precomputed) {
+    const parsed = JSON.parse(precomputed);
+    return { detections: Array.isArray(parsed) ? parsed : parsed.detections ?? [] };
+  }
+
+  const { pipeline } = await import('@huggingface/transformers');
+
+  const detector = await pipeline(
+    'zero-shot-object-detection',
+    'Xenova/owlvit-base-patch32',
+  );
+
+  const labels = [
+    'person',
+    'group of people',
+    'figure',
+    'statue',
+    'book',
+    'globe',
+    'musical instrument',
+    'writing tablet',
+  ];
+
+  const rawDetections = await detector(imageUrl, labels, {
+    threshold: 0.05,
+    top_k: 20,
+    percentage: true,
+  }) as Array<{ score: number; label: string; box: { xmin: number; ymin: number; xmax: number; ymax: number } }>;
+
+  const converted = rawDetections
+    .map((d) => ({
+      label: d.label,
+      score: d.score,
+      bbox: {
+        x: Math.round(d.box.xmin * 100),
+        y: Math.round(d.box.ymin * 100),
+        width: Math.round((d.box.xmax - d.box.xmin) * 100),
+        height: Math.round((d.box.ymax - d.box.ymin) * 100),
+      },
+    }))
+    .filter((d) => d.bbox.width >= 5 && d.bbox.height >= 5)
+    .sort((a, b) => b.score - a.score);
+
+  const kept: typeof converted = [];
+  const used = new Set<number>();
+  for (let i = 0; i < converted.length; i++) {
+    if (used.has(i)) continue;
+    kept.push(converted[i]);
+    for (let j = i + 1; j < converted.length; j++) {
+      if (used.has(j)) continue;
+      const a = converted[i].bbox;
+      const b = converted[j].bbox;
+      const ix1 = Math.max(a.x, b.x);
+      const iy1 = Math.max(a.y, b.y);
+      const ix2 = Math.min(a.x + a.width, b.x + b.width);
+      const iy2 = Math.min(a.y + a.height, b.y + b.height);
+      const inter = Math.max(0, ix2 - ix1) * Math.max(0, iy2 - iy1);
+      const union = a.width * a.height + b.width * b.height - inter;
+      if (inter / union > 0.5) used.add(j);
+    }
+  }
+
+  return { detections: kept };
+}
+
+/**
+ * @flowWeaver nodeType
+ * @expression
+ * @label Build Identify Prompt
+ * @color "cyan"
+ * @icon "search"
+ * @input detections - Raw CV detections with bounding boxes
+ * @output prompt - Formatted prompt for the identify agent
+ */
+function buildIdentifyPrompt(
+  detections: Array<{
+    label: string;
+    score: number;
+    bbox: { x: number; y: number; width: number; height: number };
+  }>,
+): string {
+  const boxDescriptions = detections.map((d, i) =>
+    `Region ${i + 1}: "${d.label}" at [x:${d.bbox.x}%, y:${d.bbox.y}%, w:${d.bbox.width}%, h:${d.bbox.height}%] (confidence: ${(d.score * 100).toFixed(1)}%)`
+  ).join('\n');
+
+  return `An object detection model found these regions of interest in a painting:
+
+${boxDescriptions}
+
+Look at the painting image and:
+1. Identify the painting (title, artist, year/period)
+2. For each detected region, identify WHO or WHAT is depicted
+3. Adjust bounding boxes if slightly off
+4. Merge regions that belong to the same subject
+5. Drop false detections
+6. Keep 4-8 most interesting regions
+
+Return ONLY valid JSON:
+{
+  "title": "Painting Title",
+  "artist": "Artist Name",
+  "year": "Year or period",
+  "regions": [
+    { "id": "kebab-case-id", "label": "Display Name", "description": "1-2 sentences", "bbox": { "x": 10, "y": 20, "width": 30, "height": 40 } }
+  ]
+}`;
+}
+
+/**
+ * @flowWeaver nodeType
+ * @expression
+ * @label Parse Identify Result
+ * @color "cyan"
+ * @icon "search"
+ * @input agentResult - Raw agent result object
+ * @output title - Painting title
+ * @output artist - Artist name
+ * @output year - Year or period
+ * @output regions - Array of identified regions
+ */
+function parseIdentifyResult(
+  agentResult: any,
+): {
   title: string;
   artist: string;
   year: string;
@@ -28,48 +154,14 @@ async function analyzeImage(
     description: string;
     bbox: { x: number; y: number; width: number; height: number };
   }>;
-}> {
-  const provider = (globalThis as any).__fw_llm_provider__;
-  if (provider) {
-    const response = await provider.call({
-      model: 'claude-sonnet-4-6-20250514',
-      max_tokens: 4096,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: imageMediaType, data: imageBase64 },
-            },
-            {
-              type: 'text',
-              text: `Analyze this painting and identify 4-8 regions of interest (people, groups, objects, architectural elements).
-
-For each region, provide:
-- id: a kebab-case identifier
-- label: short human-readable name
-- description: 1-2 sentences about what is depicted and its significance
-- bbox: bounding box as percentage of image dimensions (x, y, width, height) where x,y is the top-left corner. Values should be 0-100. No dimension should be less than 5%.
-
-Return ONLY valid JSON:
-{
-  "title": "Painting Title",
-  "artist": "Artist Name",
-  "year": "Year or period",
-  "regions": [
-    { "id": "region-name", "label": "Region Label", "description": "...", "bbox": { "x": 10, "y": 20, "width": 30, "height": 40 } }
-  ]
-}`,
-            },
-          ],
-        },
-      ],
-    });
-    const text = response.content[0].type === 'text' ? response.content[0].text : '';
-    return JSON.parse(text.replace(/```json\n?|\n?```/g, ''));
-  }
-  throw new Error('No LLM provider available. Set __fw_llm_provider__ or use mocks.');
+} {
+  const data = typeof agentResult === 'string' ? JSON.parse(agentResult) : agentResult;
+  return {
+    title: data.title,
+    artist: data.artist,
+    year: data.year,
+    regions: data.regions,
+  };
 }
 
 /**
@@ -145,20 +237,16 @@ function validateRegions(
 /**
  * @flowWeaver nodeType
  * @expression
- * @label Generate Story
- * @color "purple"
- * @icon "smartToy"
- * @input imageBase64 - Base64-encoded painting image for visual context
- * @input imageMediaType - MIME type of the image
+ * @label Build Story Prompt
+ * @color "cyan"
+ * @icon "search"
  * @input title - Painting title
  * @input artist - Artist name
  * @input year - Year or period
  * @input regions - Validated regions of interest
- * @output beats - Array of scene beats with regionId, narration, durationSeconds, zoom, and mood
+ * @output prompt - Formatted prompt for the story agent
  */
-async function generateStory(
-  imageBase64: string,
-  imageMediaType: string,
+function buildStoryPrompt(
   title: string,
   artist: string,
   year: string,
@@ -168,61 +256,53 @@ async function generateStory(
     description: string;
     bbox: { x: number; y: number; width: number; height: number };
   }>,
-): Promise<{
+): string {
+  return `Create a narrated video exploring "${title}" by ${artist} (${year}).
+
+Identified regions:
+${JSON.stringify(regions, null, 2)}
+
+Create a 30-45 second narrative as 6-10 beats.
+
+Rules:
+- Start and end with regionId "overview"
+- Each beat: 4-6 seconds
+- Narration: punchy, documentary style, 1-2 sentences max
+- Zoom: 1.0 for overview, 2.0-3.0 for regions
+- Transition: "pan" for smooth camera, "cut" for dramatic hard cuts (use for character reveals)
+- Mood: dramatic, mysterious, humorous, reverent, tense, peaceful, or epic
+
+Return ONLY valid JSON:
+{
+  "beats": [
+    { "regionId": "overview", "narration": "...", "durationSeconds": 5, "zoom": 1, "transition": "pan", "mood": "epic" }
+  ]
+}`;
+}
+
+/**
+ * @flowWeaver nodeType
+ * @expression
+ * @label Parse Story Result
+ * @color "cyan"
+ * @icon "search"
+ * @input agentResult - Raw agent result object
+ * @output beats - Array of scene beats
+ */
+function parseStoryResult(
+  agentResult: any,
+): {
   beats: Array<{
     regionId: string;
     narration: string;
     durationSeconds: number;
     zoom: number;
+    transition: string;
     mood: string;
   }>;
-}> {
-  const provider = (globalThis as any).__fw_llm_provider__;
-  if (provider) {
-    const response = await provider.call({
-      model: 'claude-sonnet-4-6-20250514',
-      max_tokens: 4096,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: imageMediaType, data: imageBase64 },
-            },
-            {
-              type: 'text',
-              text: `You are creating a narrated video that explores the painting "${title}" by ${artist} (${year}).
-
-The video pans and zooms across the painting, stopping at regions of interest. Here are the detected regions:
-
-${JSON.stringify(regions, null, 2)}
-
-Create a compelling 30-40 second narrative as a sequence of 6-8 "beats". Each beat focuses on one region or gives an overview.
-
-Rules:
-- Start with an "overview" beat (regionId: "overview") that introduces the painting
-- End with an "overview" beat that wraps up the story
-- Each beat: 4-6 seconds duration
-- Narration: punchy, engaging, slightly dramatic — like a short-form documentary. 1-2 sentences max.
-- Zoom: 1.0 for overview, 2.0-3.0 for focused regions
-- Mood: one of "dramatic", "mysterious", "humorous", "reverent", "tense", "peaceful", "epic"
-
-Return ONLY valid JSON:
-{
-  "beats": [
-    { "regionId": "overview", "narration": "...", "durationSeconds": 5, "zoom": 1, "mood": "epic" }
-  ]
-}`,
-            },
-          ],
-        },
-      ],
-    });
-    const text = response.content[0].type === 'text' ? response.content[0].text : '';
-    return JSON.parse(text.replace(/```json\n?|\n?```/g, ''));
-  }
-  throw new Error('No LLM provider available. Set __fw_llm_provider__ or use mocks.');
+} {
+  const data = typeof agentResult === 'string' ? JSON.parse(agentResult) : agentResult;
+  return { beats: data.beats };
 }
 
 /**
@@ -242,6 +322,7 @@ function validateStory(
     narration: string;
     durationSeconds: number;
     zoom: number;
+    transition: string;
     mood: string;
   }>,
   regions: Array<{
@@ -258,6 +339,7 @@ function validateStory(
     narration: string;
     durationSeconds: number;
     zoom: number;
+    transition: string;
     mood: string;
   }> | null;
   errors: string[];
@@ -266,13 +348,14 @@ function validateStory(
 
   const errors: string[] = [];
   const validMoods = ['dramatic', 'mysterious', 'humorous', 'reverent', 'tense', 'peaceful', 'epic'];
+  const validTransitions = ['pan', 'cut'];
   const regionIds = new Set(regions.map((r) => r.id));
 
   if (!beats || beats.length < 6) {
     errors.push(`Expected at least 6 beats, got ${beats?.length ?? 0}`);
   }
-  if (beats && beats.length > 8) {
-    errors.push(`Expected at most 8 beats, got ${beats.length}`);
+  if (beats && beats.length > 10) {
+    errors.push(`Expected at most 10 beats, got ${beats.length}`);
   }
 
   if (beats && beats.length > 0) {
@@ -300,10 +383,13 @@ function validateStory(
       if (!validMoods.includes(beat.mood)) {
         errors.push(`Beat ${i}: mood "${beat.mood}" is not one of ${validMoods.join(', ')}`);
       }
+      if (beat.transition && !validTransitions.includes(beat.transition)) {
+        errors.push(`Beat ${i}: transition "${beat.transition}" is not one of ${validTransitions.join(', ')}`);
+      }
     }
 
-    if (totalDuration < 30 || totalDuration > 40) {
-      errors.push(`Total duration ${totalDuration}s is outside 30-40s range`);
+    if (totalDuration < 30 || totalDuration > 50) {
+      errors.push(`Total duration ${totalDuration}s is outside 30-50s range`);
     }
   }
 
@@ -348,6 +434,7 @@ function planScenes(
     narration: string;
     durationSeconds: number;
     zoom: number;
+    transition: string;
     mood: string;
   }>,
 ): {
@@ -358,19 +445,8 @@ function planScenes(
     imagePath: string;
     imageWidth: number;
     imageHeight: number;
-    regions: Array<{
-      id: string;
-      label: string;
-      description: string;
-      bbox: { x: number; y: number; width: number; height: number };
-    }>;
-    beats: Array<{
-      regionId: string;
-      narration: string;
-      durationSeconds: number;
-      zoom: number;
-      mood: string;
-    }>;
+    regions: typeof regions;
+    beats: typeof beats;
     totalDurationSeconds: number;
   };
 } {
@@ -397,43 +473,55 @@ function planScenes(
 
 /**
  * @flowWeaver workflow
- * @description Analyzes a painting image using Claude Vision to identify regions of interest, generates a narrated story mapped to those regions, validates the story structure, and assembles a Remotion-compatible scene manifest with camera keyframes and timing.
+ * @description Detects regions in a painting using OWL-ViT (or pre-computed), identifies them via an agent, generates a narrated story via an agent, validates structure, and assembles a Remotion scene manifest.
  *
  * @param imagePath - File path to the source painting image for the manifest
- * @param imageBase64 - Base64-encoded painting image for vision analysis
+ * @param imageUrl - File URL to the painting image for OWL-ViT detection
  * @param imageMediaType - MIME type of the image (image/jpeg or image/png)
  * @param imageWidth - Source image width in pixels
  * @param imageHeight - Source image height in pixels
+ * @param [precomputedDetections] - Pre-computed OWL-ViT detections as JSON string
  * @returns manifest - Complete SceneManifest object for Remotion rendering
  *
  * @position Start 0 150
- * @node analyze analyzeImage [position: 300 150] [color: "purple"] [icon: "smartToy"]
- * @node vRegions validateRegions [position: 600 150] [color: "green"] [icon: "verified"] [suppress: "UNUSED_OUTPUT_PORT"]
- * @node story generateStory [position: 900 150] [color: "purple"] [icon: "smartToy"]
- * @node vStory validateStory [position: 1200 150] [color: "green"] [icon: "verified"] [suppress: "UNUSED_OUTPUT_PORT"]
- * @node scenes planScenes [position: 1500 150] [color: "cyan"] [icon: "description"]
- * @position Exit 1800 150
+ * @node detect detectRegions [position: 300 150] [color: "cyan"] [icon: "search"]
+ * @node buildIdPrompt buildIdentifyPrompt [position: 600 50] [color: "cyan"] [icon: "search"]
+ * @node identify waitForAgent [position: 900 150] [color: "purple"] [icon: "smartToy"] [expr: agentId="'image-identifier'"]
+ * @node parseId parseIdentifyResult [position: 1200 150] [color: "cyan"] [icon: "search"]
+ * @node vRegions validateRegions [position: 1500 150] [color: "green"] [icon: "verified"] [suppress: "UNUSED_OUTPUT_PORT"]
+ * @node buildStPrompt buildStoryPrompt [position: 1800 50] [color: "cyan"] [icon: "search"]
+ * @node story waitForAgent [position: 2100 150] [color: "purple"] [icon: "smartToy"] [expr: agentId="'story-generator'"]
+ * @node parseSt parseStoryResult [position: 2400 150] [color: "cyan"] [icon: "search"]
+ * @node vStory validateStory [position: 2700 150] [color: "green"] [icon: "verified"] [suppress: "UNUSED_OUTPUT_PORT"]
+ * @node scenes planScenes [position: 3000 150] [color: "cyan"] [icon: "description"]
+ * @position Exit 3300 150
  *
- * @path Start -> analyze -> vRegions -> story -> vStory -> scenes -> Exit
- * @path analyze:fail -> Exit
+ * @path Start -> detect -> buildIdPrompt -> identify -> parseId -> vRegions -> buildStPrompt -> story -> parseSt -> vStory -> scenes -> Exit
+ * @path detect:fail -> Exit
+ * @path identify:fail -> Exit
  * @path vRegions:fail -> Exit
  * @path story:fail -> Exit
  * @path vStory:fail -> Exit
  *
- * @connect Start.imageBase64 -> analyze.imageBase64
- * @connect Start.imageMediaType -> analyze.imageMediaType
- * @connect analyze.regions -> vRegions.regions
- * @connect Start.imageBase64 -> story.imageBase64
- * @connect Start.imageMediaType -> story.imageMediaType
- * @connect analyze.title -> story.title
- * @connect analyze.artist -> story.artist
- * @connect analyze.year -> story.year
- * @connect vRegions.validatedRegions -> story.regions
- * @connect story.beats -> vStory.beats
+ * @connect Start.imageUrl -> detect.imageUrl
+ * @connect Start.precomputedDetections -> detect.precomputed
+ * @connect detect.detections -> buildIdPrompt.detections
+ * @connect buildIdPrompt.prompt -> identify.prompt
+ * @connect detect.detections -> identify.context
+ * @connect identify.agentResult -> parseId.agentResult
+ * @connect parseId.regions -> vRegions.regions
+ * @connect parseId.title -> buildStPrompt.title
+ * @connect parseId.artist -> buildStPrompt.artist
+ * @connect parseId.year -> buildStPrompt.year
+ * @connect vRegions.validatedRegions -> buildStPrompt.regions
+ * @connect buildStPrompt.prompt -> story.prompt
+ * @connect vRegions.validatedRegions -> story.context
+ * @connect story.agentResult -> parseSt.agentResult
+ * @connect parseSt.beats -> vStory.beats
  * @connect vRegions.validatedRegions -> vStory.regions
- * @connect analyze.title -> scenes.title
- * @connect analyze.artist -> scenes.artist
- * @connect analyze.year -> scenes.year
+ * @connect parseId.title -> scenes.title
+ * @connect parseId.artist -> scenes.artist
+ * @connect parseId.year -> scenes.year
  * @connect Start.imagePath -> scenes.imagePath
  * @connect Start.imageWidth -> scenes.imageWidth
  * @connect Start.imageHeight -> scenes.imageHeight
@@ -445,10 +533,11 @@ export function paintingExplorer(
   execute: boolean,
   params: {
     imagePath: string;
-    imageBase64: string;
+    imageUrl: string;
     imageMediaType: string;
     imageWidth: number;
     imageHeight: number;
+    precomputedDetections?: string;
   },
 ): {
   onSuccess: boolean;
@@ -471,6 +560,7 @@ export function paintingExplorer(
       narration: string;
       durationSeconds: number;
       zoom: number;
+      transition: string;
       mood: string;
     }>;
     totalDurationSeconds: number;

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
+    "@huggingface/transformers": "^4.1.0",
     "@remotion/cli": "^4.0.447",
     "@remotion/media-utils": "^4.0.447",
     "@remotion/transitions": "^4.0.447",

@@ -7,10 +7,12 @@ import sampleManifest from '@video/videos/painting-explorer/sample-manifest.json
 const manifestData = sampleManifest as SceneManifest;
 
 const FPS = 30;
+// Extra frames: 3s opening hook + 3s outro fade
+const EXTRA_SECONDS = 6;
 
 const RemotionRoot: React.FC = () => {
   const manifest = manifestData;
-  const totalFrames = Math.round(manifest.totalDurationSeconds * FPS);
+  const totalFrames = Math.round((manifest.totalDurationSeconds + EXTRA_SECONDS) * FPS);
 
   return (
     <>

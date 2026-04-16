@@ -24,6 +24,8 @@ export const SceneBeatSchema = z.object({
   durationSeconds: z.number().min(1).max(15),
   /** Zoom level (1 = fit, 2 = 2x zoom, etc.) */
   zoom: z.number().min(0.8).max(5),
+  /** Transition type: "pan" smoothly moves camera, "cut" clips region to full screen */
+  transition: z.enum(['pan', 'cut']).default('pan'),
   /** Mood tag for SFX/meme selection */
   mood: z.enum(['dramatic', 'mysterious', 'humorous', 'reverent', 'tense', 'peaceful', 'epic']),
   /** Optional sound effect key */
