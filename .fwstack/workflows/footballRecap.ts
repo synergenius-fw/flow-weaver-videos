@@ -4,15 +4,30 @@
 
 const COMPETITION_IDS = ['PL', 'PD', 'SA', 'BL1', 'FL1', 'PPL', 'DED', 'CL', 'EL', 'ECL'] as const;
 
+// Competitions and which days they typically play (0=Sun, 1=Mon, ..., 6=Sat)
+const COMP_SCHEDULE: Record<string, number[]> = {
+  PL: [0, 1, 2, 3, 5, 6],    // Sat-Mon mostly, occasional midweek
+  PD: [0, 1, 2, 5, 6],
+  SA: [0, 1, 2, 5, 6],
+  BL1: [0, 2, 5, 6],
+  FL1: [0, 2, 5, 6],
+  PPL: [0, 1, 2, 5, 6],
+  DED: [0, 2, 5, 6],
+  CL: [2, 3],                  // Tue-Wed
+  EL: [4],                     // Thu
+  ECL: [4],                    // Thu
+};
+
 /**
  * @flowWeaver nodeType
  * @expression
  * @label Fetch Results
  * @color "cyan"
  * @icon "search"
- * @input date - Date in YYYY-MM-DD format
+ * @input date - Date in YYYY-MM-DD format, or "latest" to auto-detect the most recent matchday
  * @input apiKey - football-data.org API key (X-Auth-Token)
  * @output competitions - Array of competition objects with matches, scores, scorers, and crest URLs
+ * @output resolvedDate - The actual date used (resolved from "latest" or passed through)
  */
 async function fetchResults(
   date: string,
@@ -27,59 +42,117 @@ async function fetchResults(
       scorers: Array<{ player: string; minute: number; team: string }>;
     }>;
   }>;
+  resolvedDate: string;
 }> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  const compNames: Record<string, string> = {
+    PL: 'Premier League', PD: 'La Liga', SA: 'Serie A',
+    BL1: 'Bundesliga', FL1: 'Ligue 1', PPL: 'Primeira Liga',
+    DED: 'Eredivisie', CL: 'Champions League', EL: 'Europa League',
+    ECL: 'Conference League',
+  };
 
-  try {
-    const res = await fetch(
-      `https://api.football-data.org/v4/matches?dateFrom=${date}&dateTo=${date}`,
-      {
-        headers: { 'X-Auth-Token': apiKey },
-        signal: controller.signal,
-      },
-    );
+  // Auto-detect latest matchday: scan backwards from today up to 7 days
+  let targetDate = date;
+  if (!date || date === 'latest') {
+    const today = new Date();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const ds = d.toISOString().split('T')[0];
+      const dayOfWeek = d.getDay();
 
-    if (!res.ok) {
-      throw new Error(`football-data.org API returned ${res.status}: ${res.statusText}`);
+      // Pick a competition likely to have matches on this day
+      const testComp = Object.entries(COMP_SCHEDULE).find(([, days]) => days.includes(dayOfWeek));
+      if (!testComp) continue;
+
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        const res = await fetch(
+          `https://api.football-data.org/v4/competitions/${testComp[0]}/matches?dateFrom=${ds}&dateTo=${ds}&status=FINISHED`,
+          { headers: { 'X-Auth-Token': apiKey }, signal: controller.signal },
+        );
+        clearTimeout(timeout);
+        if (res.ok) {
+          const data = await res.json() as { matches?: unknown[] };
+          if (data.matches && data.matches.length > 0) {
+            targetDate = ds;
+            break;
+          }
+        }
+        await new Promise((r) => setTimeout(r, 6500));
+      } catch { /* continue scanning */ }
     }
+    if (!targetDate || targetDate === 'latest') {
+      throw new Error('No finished matches found in the last 7 days');
+    }
+  }
 
-    const data = await res.json() as {
-      matches: Array<{
-        competition: { code: string; name: string };
-        homeTeam: { name: string; crest: string };
-        awayTeam: { name: string; crest: string };
-        score: { fullTime: { home: number; away: number } };
-        goals: Array<{ scorer: { name: string }; minute: number; team: { name: string } }>;
-      }>;
-    };
+  const resolvedDate = targetDate;
+  const dayOfWeek = new Date(resolvedDate + 'T12:00:00Z').getDay();
 
-    const validCodes = new Set(COMPETITION_IDS);
-    const byComp = new Map<string, { id: string; name: string; matches: any[] }>();
+  // Only query competitions likely to have matches on this day of week
+  const activeComps = Object.entries(COMP_SCHEDULE)
+    .filter(([, days]) => days.includes(dayOfWeek))
+    .map(([code]) => code);
 
-    for (const m of data.matches) {
-      if (!validCodes.has(m.competition.code)) continue;
-      if (!m.score.fullTime || m.score.fullTime.home === null) continue;
+  const byComp = new Map<string, { id: string; name: string; matches: any[] }>();
 
-      if (!byComp.has(m.competition.code)) {
-        byComp.set(m.competition.code, { id: m.competition.code, name: m.competition.name, matches: [] });
+  for (const code of activeComps) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+
+      const res = await fetch(
+        `https://api.football-data.org/v4/competitions/${code}/matches?dateFrom=${resolvedDate}&dateTo=${resolvedDate}&status=FINISHED`,
+        { headers: { 'X-Auth-Token': apiKey }, signal: controller.signal },
+      );
+      clearTimeout(timeout);
+
+      if (!res.ok) continue;
+
+      const data = await res.json() as {
+        matches: Array<{
+          competition: { code: string; name: string };
+          homeTeam: { name: string; crest: string };
+          awayTeam: { name: string; crest: string };
+          score: { fullTime: { home: number; away: number } };
+          goals: Array<{ scorer: { name: string }; minute: number; team: { name: string } }> | null;
+        }>;
+      };
+
+      for (const m of data.matches || []) {
+        if (!m.score?.fullTime || m.score.fullTime.home === null) continue;
+
+        if (!byComp.has(code)) {
+          byComp.set(code, { id: code, name: m.competition?.name || compNames[code], matches: [] });
+        }
+
+        byComp.get(code)!.matches.push({
+          homeTeam: { name: m.homeTeam.name, crest: m.homeTeam.crest, score: m.score.fullTime.home },
+          awayTeam: { name: m.awayTeam.name, crest: m.awayTeam.crest, score: m.score.fullTime.away },
+          scorers: (m.goals || [])
+            .filter((g) => g.scorer?.name)
+            .map((g) => ({
+              player: g.scorer.name,
+              minute: g.minute || 0,
+              team: g.team?.name || '',
+            })),
+        });
       }
 
-      byComp.get(m.competition.code)!.matches.push({
-        homeTeam: { name: m.homeTeam.name, crest: m.homeTeam.crest, score: m.score.fullTime.home },
-        awayTeam: { name: m.awayTeam.name, crest: m.awayTeam.crest, score: m.score.fullTime.away },
-        scorers: (m.goals || []).map((g) => ({
-          player: g.scorer?.name || 'Unknown',
-          minute: g.minute || 0,
-          team: g.team?.name || '',
-        })),
-      });
+      // Rate limit: free tier 10 req/min
+      await new Promise((r) => setTimeout(r, 6500));
+    } catch {
+      // Skip failed competitions
     }
-
-    return { competitions: Array.from(byComp.values()) };
-  } finally {
-    clearTimeout(timeout);
   }
+
+  if (byComp.size === 0) {
+    throw new Error(`No finished matches found for ${resolvedDate} across ${activeComps.length} competitions`);
+  }
+
+  return { competitions: Array.from(byComp.values()), resolvedDate };
 }
 
 /**
@@ -119,9 +192,8 @@ async function fetchImages(
   const playerImages: Record<string, string> = {};
   const crestImages: Record<string, string> = {};
 
-  // Collect unique players and teams
   const players = new Set<string>();
-  const teams = new Map<string, string>(); // name -> crest URL
+  const teams = new Map<string, string>();
 
   for (const comp of competitions) {
     for (const match of comp.matches) {
@@ -135,47 +207,58 @@ async function fetchImages(
     }
   }
 
-  // Download team crests
+  // Download team crests (skip if already cached)
   for (const [teamName, crestUrl] of teams.entries()) {
     if (!crestUrl) continue;
+    const ext = crestUrl.includes('.svg') ? '.svg' : '.png';
+    const safeName = teamName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+    const filePath = path.join(crestDir, `${safeName}${ext}`);
+    const relPath = `assets/crests/${safeName}${ext}`;
+
+    if (fs.existsSync(filePath)) {
+      crestImages[teamName] = relPath;
+      continue;
+    }
+
     try {
       const res = await fetch(crestUrl);
       if (res.ok) {
         const buffer = Buffer.from(await res.arrayBuffer());
-        const ext = crestUrl.includes('.svg') ? '.svg' : '.png';
-        const safeName = teamName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-        const filePath = path.join(crestDir, `${safeName}${ext}`);
         fs.writeFileSync(filePath, buffer);
-        crestImages[teamName] = `assets/crests/${safeName}${ext}`;
+        crestImages[teamName] = relPath;
       }
-    } catch {
-      // Skip failed downloads
-    }
+    } catch { /* skip */ }
   }
 
-  // Download player photos from Wikipedia (with rate limiting)
+  // Download player photos from Wikipedia (with rate limiting, skip cached)
   for (const playerName of players) {
+    const safeName = playerName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+    const filePath = path.join(playerDir, `${safeName}.jpg`);
+    const relPath = `assets/players/${safeName}.jpg`;
+
+    if (fs.existsSync(filePath)) {
+      playerImages[playerName] = relPath;
+      continue;
+    }
+
     try {
       const encoded = encodeURIComponent(playerName.replace(/ /g, '_'));
-      const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encoded}`);
+      const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encoded}`, {
+        headers: { 'User-Agent': 'flow-weaver-videos/1.0 (football-recap)' },
+      });
       if (res.ok) {
         const data = await res.json() as { thumbnail?: { source: string } };
         if (data.thumbnail?.source) {
           const imgRes = await fetch(data.thumbnail.source);
           if (imgRes.ok) {
             const buffer = Buffer.from(await imgRes.arrayBuffer());
-            const safeName = playerName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-            const filePath = path.join(playerDir, `${safeName}.jpg`);
             fs.writeFileSync(filePath, buffer);
-            playerImages[playerName] = `assets/players/${safeName}.jpg`;
+            playerImages[playerName] = relPath;
           }
         }
       }
-      // Rate limit: 1 second between Wikipedia requests
-      await new Promise((r) => setTimeout(r, 1000));
-    } catch {
-      // Skip failed downloads
-    }
+      await new Promise((r) => setTimeout(r, 1500));
+    } catch { /* skip */ }
   }
 
   return { playerImages, crestImages };
@@ -221,7 +304,7 @@ function rankHighlights(
 
   const totalMatches = competitions.reduce((sum, c) => sum + c.matches.length, 0);
   if (totalMatches === 0) {
-    return { onSuccess: false, onFailure: true, ranked: null, errors: ['No matches found for date'] };
+    return { onSuccess: false, onFailure: true, ranked: null, errors: ['No matches found for date — pipeline cannot continue'] };
   }
 
   const ranked = competitions.map((comp) => ({
@@ -230,7 +313,6 @@ function rankHighlights(
       const totalGoals = match.homeTeam.score + match.awayTeam.score;
       const awayWin = match.awayTeam.score > match.homeTeam.score;
 
-      // Count goals per player for hat trick detection
       const playerGoals = new Map<string, number>();
       for (const s of match.scorers) {
         playerGoals.set(s.player, (playerGoals.get(s.player) || 0) + 1);
@@ -250,7 +332,6 @@ function rankHighlights(
     }),
   }));
 
-  // Sort by highlight count descending
   ranked.sort((a, b) => {
     const aHighlights = a.matches.filter((m) => m.highlight).length;
     const bHighlights = b.matches.filter((m) => m.highlight).length;
@@ -267,6 +348,7 @@ function rankHighlights(
  * @color "cyan"
  * @icon "description"
  * @input ranked - Ranked competitions with highlight flags
+ * @input resolvedDate - The actual date being recapped
  * @output prompt - Formatted prompt string for the script agent
  */
 function buildScriptPrompt(
@@ -281,16 +363,19 @@ function buildScriptPrompt(
       highlightReason: string;
     }>;
   }>,
+  resolvedDate: string,
 ): string {
   const lines: string[] = [];
-  lines.push('Generate narration beats for a football results video recap.\n');
+  lines.push(`Generate narration beats for a football results video recap for ${resolvedDate}.\n`);
 
   for (const comp of ranked) {
     if (comp.matches.length === 0) continue;
     lines.push(`## ${comp.name} (${comp.id})`);
     for (const m of comp.matches) {
       const score = `${m.homeTeam.name} ${m.homeTeam.score} - ${m.awayTeam.score} ${m.awayTeam.name}`;
-      const scorerStr = m.scorers.map((s) => `${s.player} ${s.minute}'`).join(', ');
+      const scorerStr = m.scorers.length > 0
+        ? m.scorers.map((s) => `${s.player} ${s.minute}'`).join(', ')
+        : '';
       const hl = m.highlight ? ` [HIGHLIGHT: ${m.highlightReason}]` : '';
       lines.push(`  ${score}${hl}`);
       if (scorerStr) lines.push(`    Goals: ${scorerStr}`);
@@ -463,18 +548,150 @@ async function generateAudio(
 /**
  * @flowWeaver nodeType
  * @expression
+ * @label Fetch Clips
+ * @color "red"
+ * @icon "play"
+ * @input competitions - Array of competition objects with matches
+ * @input resolvedDate - Resolved date string for search context
+ * @input outputDir - Absolute path to public directory for saving clips
+ * @output matchClips - Mapping of "homeTeam vs awayTeam" to local clip file path (relative to public/)
+ */
+async function fetchClips(
+  competitions: Array<{
+    id: string;
+    name: string;
+    matches: Array<{
+      homeTeam: { name: string; crest: string; score: number };
+      awayTeam: { name: string; crest: string; score: number };
+      scorers: Array<{ player: string; minute: number; team: string }>;
+    }>;
+  }>,
+  resolvedDate: string,
+  outputDir: string,
+): Promise<{
+  matchClips: Record<string, string>;
+}> {
+  const { execSync } = await import('child_process');
+  const fs = await import('fs');
+  const path = await import('path');
+
+  const clipsDir = path.join(outputDir, 'assets', 'clips');
+  fs.mkdirSync(clipsDir, { recursive: true });
+
+  // Official league channels — primary source for clips
+  const OFFICIAL_CHANNELS = new Set([
+    'UCG5qGWdu8nIRZqJ_GgDwQ-w', // Premier League
+    'UCTv-XvfzLX3i4IGWAm4sbmA', // La Liga
+    'UCBJeMCIeLQos7wacox4hmLQ', // Serie A
+    'UC6UL29enLNe4mqwTfAyeNuw', // Bundesliga
+    'UCQsH5XtIc9hONE1BQjucM0g', // Ligue 1
+    'UCyGa1YEx9ST66rYrJTGIKOw', // UEFA
+  ]);
+
+  function shortName(name: string): string {
+    return name
+      .replace(/\b(FC|CF|AFC|SC|OSC|HSC|SSC|ACF|SL|AS|RC)\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  // Check if a channel is a verified club/league (by subscriber count or official status)
+  function isVerifiedChannel(channelId: string, channelName: string, home: string, away: string): boolean {
+    if (OFFICIAL_CHANNELS.has(channelId)) return true;
+    // Accept club channels whose name contains a team name
+    const nameLower = channelName.toLowerCase();
+    const homeLower = home.toLowerCase();
+    const awayLower = away.toLowerCase();
+    if (nameLower.includes(homeLower) || nameLower.includes(awayLower)) return true;
+    // Accept channels with "official" in the name
+    if (nameLower.includes('official')) return true;
+    return false;
+  }
+
+  const matchClips: Record<string, string> = {};
+
+  for (const comp of competitions) {
+    for (const match of comp.matches) {
+      const key = `${match.homeTeam.name} vs ${match.awayTeam.name}`;
+      const safeName = key.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+      const outFile = path.join(clipsDir, `${safeName}.mp4`);
+      const relPath = `assets/clips/${safeName}.mp4`;
+
+      if (fs.existsSync(outFile)) {
+        matchClips[key] = relPath;
+        continue;
+      }
+
+      try {
+        const home = shortName(match.homeTeam.name);
+        const away = shortName(match.awayTeam.name);
+        const query = `${home} ${away} highlights ${resolvedDate}`;
+
+        // Search 8 results, get channel ID + channel name + video ID
+        const searchResult = execSync(
+          `yt-dlp --print "%(channel_id)s\t%(channel)s\t%(id)s" "ytsearch8:${query}" --no-download --no-warnings`,
+          { timeout: 30000, stdio: 'pipe', encoding: 'utf-8' },
+        ).trim();
+
+        const lines = searchResult.split('\n').filter(Boolean);
+        let videoId = '';
+
+        // Prefer official league channels first
+        for (const line of lines) {
+          const [chId, , vId] = line.split('\t');
+          if (OFFICIAL_CHANNELS.has(chId)) {
+            videoId = vId;
+            break;
+          }
+        }
+
+        // Then try verified club channels
+        if (!videoId) {
+          for (const line of lines) {
+            const [chId, chName, vId] = line.split('\t');
+            if (isVerifiedChannel(chId, chName || '', home, away)) {
+              videoId = vId;
+              break;
+            }
+          }
+        }
+
+        // Do NOT fall back to unverified channels — skip the match
+        if (videoId) {
+          // Download 15 seconds at 720p, starting at 0:15 (past intros/logos)
+          execSync(
+            `yt-dlp -f "best[height<=720]" --download-sections "*0:15-0:30" -o "${outFile}" "https://www.youtube.com/watch?v=${videoId}" --no-warnings`,
+            { timeout: 60000, stdio: 'pipe' },
+          );
+          if (fs.existsSync(outFile)) {
+            matchClips[key] = relPath;
+          }
+        }
+      } catch {
+        // Skip matches where no clip could be downloaded
+      }
+    }
+  }
+
+  return { matchClips };
+}
+
+/**
+ * @flowWeaver nodeType
+ * @expression
  * @label Plan Scenes
  * @color "cyan"
  * @icon "description"
- * @input date - Date string
+ * @input resolvedDate - The actual date being recapped
  * @input ranked - Ranked competitions with match data
  * @input beats - Narrated beats with audio paths and durations
  * @input playerImages - Player name to image path mapping
  * @input crestImages - Team name to crest path mapping
+ * @input matchClips - Match key to clip file path mapping
  * @output manifest - Complete manifest for Remotion rendering
  */
 function planScenes(
-  date: string,
+  resolvedDate: string,
   ranked: Array<{
     id: string;
     name: string;
@@ -495,6 +712,7 @@ function planScenes(
   }>,
   playerImages: Record<string, string>,
   crestImages: Record<string, string>,
+  matchClips: Record<string, string>,
 ): {
   manifest: {
     date: string;
@@ -502,6 +720,7 @@ function planScenes(
     beats: typeof beats;
     playerImages: typeof playerImages;
     crestImages: typeof crestImages;
+    matchClips: typeof matchClips;
     totalDurationSeconds: number;
   };
 } {
@@ -510,11 +729,12 @@ function planScenes(
 
   return {
     manifest: {
-      date,
+      date: resolvedDate,
       competitions: ranked,
       beats,
       playerImages,
       crestImages,
+      matchClips,
       totalDurationSeconds,
     },
   };
@@ -526,9 +746,9 @@ function planScenes(
 
 /**
  * @flowWeaver workflow
- * @description Fetches daily European football results, downloads images, ranks highlights, generates narration via agent, validates script, optionally generates TTS audio, and assembles a Remotion manifest.
+ * @description Fetches daily European football results (auto-detecting latest matchday), downloads images and highlight clips from verified channels, ranks highlights, generates narration via agent, validates script, optionally generates TTS audio, and assembles a Remotion manifest.
  *
- * @param date - Date in YYYY-MM-DD format
+ * @param date - Date in YYYY-MM-DD format, or "latest" to auto-detect most recent matchday
  * @param apiKey - football-data.org API key
  * @param outputDir - Absolute path to public directory
  * @param [narrate] - Set to "true" to generate Kokoro TTS audio
@@ -538,19 +758,22 @@ function planScenes(
  * @position Start 0 150
  * @node fetch fetchResults [position: 300 150] [color: "cyan"] [icon: "search"]
  * @node images fetchImages [position: 600 50] [color: "cyan"] [icon: "download"]
- * @node rank rankHighlights [position: 600 250] [color: "orange"] [icon: "sort"] [suppress: "UNUSED_OUTPUT_PORT"]
- * @node buildPrompt buildScriptPrompt [position: 900 150] [color: "cyan"] [icon: "description"]
- * @node script waitForAgent [position: 1200 150] [color: "purple"] [icon: "smartToy"] [expr: agentId="'script-writer'"]
- * @node parse parseScript [position: 1500 150] [color: "cyan"] [icon: "search"]
- * @node vScript validateScript [position: 1800 150] [color: "green"] [icon: "verified"] [suppress: "UNUSED_OUTPUT_PORT"]
- * @node audio generateAudio [position: 2100 150] [color: "orange"] [icon: "hearing"]
+ * @node clips fetchClips [position: 600 150] [color: "red"] [icon: "play"]
+ * @node rank rankHighlights [position: 600 300] [color: "orange"] [icon: "sort"] [suppress: "UNUSED_OUTPUT_PORT"]
+ * @node buildPrompt buildScriptPrompt [position: 900 300] [color: "cyan"] [icon: "description"]
+ * @node script waitForAgent [position: 1200 300] [color: "purple"] [icon: "smartToy"] [expr: agentId="'script-writer'"]
+ * @node parse parseScript [position: 1500 300] [color: "cyan"] [icon: "search"]
+ * @node vScript validateScript [position: 1800 300] [color: "green"] [icon: "verified"] [suppress: "UNUSED_OUTPUT_PORT"]
+ * @node audio generateAudio [position: 2100 300] [color: "orange"] [icon: "hearing"]
  * @node scenes planScenes [position: 2400 150] [color: "cyan"] [icon: "description"]
  * @position Exit 2700 150
  *
  * @path Start -> fetch -> images -> scenes -> Exit
+ * @path Start -> fetch -> clips -> scenes
  * @path Start -> fetch -> rank -> buildPrompt -> script -> parse -> vScript -> audio -> scenes
  * @path fetch:fail -> Exit
  * @path images:fail -> Exit
+ * @path clips:fail -> Exit
  * @path rank:fail -> Exit
  * @path script:fail -> Exit
  * @path vScript:fail -> Exit
@@ -560,8 +783,12 @@ function planScenes(
  * @connect Start.apiKey -> fetch.apiKey
  * @connect fetch.competitions -> images.competitions
  * @connect Start.outputDir -> images.outputDir
+ * @connect fetch.competitions -> clips.competitions
+ * @connect fetch.resolvedDate -> clips.resolvedDate
+ * @connect Start.outputDir -> clips.outputDir
  * @connect fetch.competitions -> rank.competitions
  * @connect rank.ranked -> buildPrompt.ranked
+ * @connect fetch.resolvedDate -> buildPrompt.resolvedDate
  * @connect buildPrompt.prompt -> script.prompt
  * @connect rank.ranked -> script.context
  * @connect script.agentResult -> parse.agentResult
@@ -570,11 +797,12 @@ function planScenes(
  * @connect Start.narrate -> audio.narrate
  * @connect Start.outputDir -> audio.outputDir
  * @connect Start.voice -> audio.voice
- * @connect Start.date -> scenes.date
+ * @connect fetch.resolvedDate -> scenes.resolvedDate
  * @connect rank.ranked -> scenes.ranked
  * @connect audio.narrated -> scenes.beats
  * @connect images.playerImages -> scenes.playerImages
  * @connect images.crestImages -> scenes.crestImages
+ * @connect clips.matchClips -> scenes.matchClips
  * @connect scenes.manifest -> Exit.manifest
  */
 export function footballRecap(
@@ -611,6 +839,7 @@ export function footballRecap(
     }>;
     playerImages: Record<string, string>;
     crestImages: Record<string, string>;
+    matchClips: Record<string, string>;
     totalDurationSeconds: number;
   } | null;
 } {
