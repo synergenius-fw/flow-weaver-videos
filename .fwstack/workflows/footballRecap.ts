@@ -263,25 +263,29 @@ async function fetchImages(
     } catch { /* skip */ }
   }
 
-  // Download stadium/atmosphere images per competition from Unsplash (free, CC0)
+  // Download stadium/atmosphere images per competition from Wikimedia Commons (CC licensed)
   const stadiumDir = path.join(outputDir, 'assets', 'stadiums');
   fs.mkdirSync(stadiumDir, { recursive: true });
   const stadiumImages: Record<string, string> = {};
 
-  const stadiumQueries: Record<string, string> = {
-    PL: 'premier league stadium football',
-    PD: 'la liga stadium football spain',
-    SA: 'serie a stadium football italy',
-    BL1: 'bundesliga stadium football germany',
-    FL1: 'ligue 1 stadium football france',
-    PPL: 'portugal football stadium',
-    DED: 'eredivisie football stadium netherlands',
-    CL: 'champions league stadium night',
-    EL: 'europa league football stadium',
-    ECL: 'football stadium night',
+  // Iconic stadium Wikipedia articles per league — use Wikipedia REST API for thumbnails
+  const STADIUM_PAGES: Record<string, string> = {
+    PL: 'Wembley Stadium',
+    PD: 'Santiago Bernabéu Stadium',
+    SA: 'Stadio Olimpico',
+    BL1: 'Signal Iduna Park',
+    FL1: 'Parc des Princes',
+    PPL: 'Estádio da Luz',
+    DED: 'Johan Cruyff Arena',
+    CL: 'Wembley Stadium',
+    EL: 'Wembley Stadium',
+    ECL: 'Wembley Stadium',
   };
 
   for (const comp of competitions) {
+    const page = STADIUM_PAGES[comp.id];
+    if (!page) continue;
+
     const filePath = path.join(stadiumDir, `${comp.id.toLowerCase()}.jpg`);
     const relPath = `assets/stadiums/${comp.id.toLowerCase()}.jpg`;
 
@@ -291,18 +295,25 @@ async function fetchImages(
     }
 
     try {
-      const query = encodeURIComponent(stadiumQueries[comp.id] || 'football stadium');
-      // Unsplash Source API — returns a random photo matching the query, no API key needed
-      const res = await fetch(`https://source.unsplash.com/1280x720/?${query}`, { redirect: 'follow' });
-      if (res.ok) {
-        const buffer = Buffer.from(await res.arrayBuffer());
-        // Only save if we got a real image (not a tiny error response)
-        if (buffer.length > 10000) {
-          fs.writeFileSync(filePath, buffer);
-          stadiumImages[comp.id] = relPath;
+      const encoded = encodeURIComponent(page);
+      const apiRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encoded}`, {
+        headers: { 'User-Agent': 'flow-weaver-videos/1.0 (football-recap)' },
+      });
+      if (apiRes.ok) {
+        const data = await apiRes.json() as { originalimage?: { source: string }; thumbnail?: { source: string } };
+        const imgUrl = data.originalimage?.source || data.thumbnail?.source;
+        if (imgUrl) {
+          const imgRes = await fetch(imgUrl);
+          if (imgRes.ok) {
+            const buffer = Buffer.from(await imgRes.arrayBuffer());
+            if (buffer.length > 5000) {
+              fs.writeFileSync(filePath, buffer);
+              stadiumImages[comp.id] = relPath;
+            }
+          }
         }
       }
-      await new Promise((r) => setTimeout(r, 1000));
+      await new Promise((r) => setTimeout(r, 1500));
     } catch { /* skip */ }
   }
 

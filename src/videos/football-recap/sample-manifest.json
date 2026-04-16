@@ -1,0 +1,138 @@
+{
+  "date": "2026-04-13",
+  "competitions": [
+    {
+      "id": "PL",
+      "name": "Premier League",
+      "matches": [
+        {
+          "homeTeam": {
+            "name": "Manchester United FC",
+            "crest": "https://crests.football-data.org/66.png",
+            "score": 1
+          },
+          "awayTeam": {
+            "name": "Leeds United FC",
+            "crest": "https://crests.football-data.org/341.png",
+            "score": 2
+          },
+          "scorers": [],
+          "highlight": true,
+          "highlightReason": "away win"
+        }
+      ]
+    },
+    {
+      "id": "PPL",
+      "name": "Primeira Liga",
+      "matches": [
+        {
+          "homeTeam": {
+            "name": "CD Tondela",
+            "crest": "https://crests.football-data.org/1049.png",
+            "score": 2
+          },
+          "awayTeam": {
+            "name": "Gil Vicente FC",
+            "crest": "https://crests.football-data.org/5533.png",
+            "score": 2
+          },
+          "scorers": [],
+          "highlight": true,
+          "highlightReason": "high-scoring"
+        }
+      ]
+    },
+    {
+      "id": "PD",
+      "name": "Primera Division",
+      "matches": [
+        {
+          "homeTeam": {
+            "name": "Levante UD",
+            "crest": "https://crests.football-data.org/88.png",
+            "score": 1
+          },
+          "awayTeam": {
+            "name": "Getafe CF",
+            "crest": "https://crests.football-data.org/82.png",
+            "score": 0
+          },
+          "scorers": [],
+          "highlight": false,
+          "highlightReason": "routine"
+        }
+      ]
+    },
+    {
+      "id": "SA",
+      "name": "Serie A",
+      "matches": [
+        {
+          "homeTeam": {
+            "name": "ACF Fiorentina",
+            "crest": "https://crests.football-data.org/99.png",
+            "score": 1
+          },
+          "awayTeam": {
+            "name": "SS Lazio",
+            "crest": "https://crests.football-data.org/110.png",
+            "score": 0
+          },
+          "scorers": [],
+          "highlight": false,
+          "highlightReason": "routine"
+        }
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "competitionId": "PL",
+      "narration": "Leeds shock Old Trafford. Two-one to the visitors — United's season goes from bad to worse.",
+      "mood": "shocking",
+      "durationSeconds": 6.6,
+      "audioPath": "audio/recap-beat-0.wav"
+    },
+    {
+      "competitionId": "PPL",
+      "narration": "Four goals in Tondela as Gil Vicente snatch a late equalizer. Pure Primeira Liga chaos.",
+      "mood": "exciting",
+      "durationSeconds": 7.2,
+      "audioPath": "audio/recap-beat-1.wav"
+    },
+    {
+      "competitionId": "SA",
+      "narration": "Fiorentina edge Lazio one-nil at the Franchi. Tight, tense, and crucial in the race for Europe.",
+      "mood": "dramatic",
+      "durationSeconds": 7.3,
+      "audioPath": "audio/recap-beat-2.wav"
+    },
+    {
+      "competitionId": "PD",
+      "narration": "Levante grind past Getafe. One-nil — ugly football, beautiful points in the relegation battle.",
+      "mood": "routine",
+      "durationSeconds": 7.5,
+      "audioPath": "audio/recap-beat-3.wav"
+    }
+  ],
+  "playerImages": {},
+  "crestImages": {
+    "Manchester United FC": "assets/crests/manchester_united_fc.png",
+    "Leeds United FC": "assets/crests/leeds_united_fc.png",
+    "Levante UD": "assets/crests/levante_ud.png",
+    "Getafe CF": "assets/crests/getafe_cf.png",
+    "ACF Fiorentina": "assets/crests/acf_fiorentina.png",
+    "SS Lazio": "assets/crests/ss_lazio.png",
+    "CD Tondela": "assets/crests/cd_tondela.png",
+    "Gil Vicente FC": "assets/crests/gil_vicente_fc.png"
+  },
+  "matchClips": {},
+  "totalDurationSeconds": 36.6,
+  "stadiumImages": {
+    "PL": "assets/stadiums/pl.jpg",
+    "PD": "assets/stadiums/pd.jpg",
+    "SA": "assets/stadiums/sa.jpg",
+    "PPL": "assets/stadiums/ppl.jpg"
+  }
+}
